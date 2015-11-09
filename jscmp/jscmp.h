@@ -29,6 +29,7 @@
 #define JSCMP_E_TOO_LONG_TEXT						-11
 #define JSCMP_E_NEST_LEVEL_OVER						-12
 #define JSCMP_E_READ								-13
+#define JSCMP_E_ARG									-14
 
 typedef uint8_t *jscmp_node_t;
 typedef struct {

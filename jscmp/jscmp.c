@@ -30,13 +30,15 @@
 
 #define BUF_SIZE	64
 
-int findstr(const char **strtbl, int strtbl_len, const char *s)
+int jscmp_findstr(const char **strtbl, int strtbl_len, const char *s)
 {
 	int i;
+
 	for (i = 0; i < strtbl_len; i++) {
 		if (strcmp(strtbl[i], s) == 0)
 			return i;
 	}
+
 	return -1;
 }
 
@@ -96,9 +98,13 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 	int dst_buf_pos = 0;
 	int str_len_write_pos;
 	uint16_t length_write_val[JSCMP_NEST_LEVEL];
-	int container_node_stack[JSCMP_NEST_LEVEL];
+	uint16_t container_node_stack[JSCMP_NEST_LEVEL];
 	int container_node_stack_cnt = 0;
 	jscmp_parser_ctx_t ctx;
+
+	if (!doc || !src || !dst_buf) {
+		return JSCMP_E_ARG;
+	}
 
 	doc->dst_buf = dst_buf;
 	doc->dst_buf_size = dst_buf_size;
@@ -307,7 +313,7 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 					if (!buf_ovr) {
 						int idx;
 						buf[buf_idx] = '\0';
-						idx = findstr(strtbl, strtbl_len, buf);
+						idx = jscmp_findstr(strtbl, strtbl_len, buf);
 						if (idx >= 0) {
 							if (idx >= 256) {
 
@@ -532,13 +538,10 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 			container_len = length_write_val[container_node_stack_cnt];
 			container_size = dst_buf_pos - container_node_pos;
 
-			if (container_len > 0xFFFF) {
-				return JSCMP_E_TOO_LONG_TEXT;
-			}
 			if (container_size > 0xFFFF) {
 				return JSCMP_E_TOO_LONG_TEXT;
 			}
-				
+			
 			dst_buf[container_node_pos + 1] = container_len;
 			dst_buf[container_node_pos + 2] = container_len >> 8;
 			dst_buf[container_node_pos + 3] = container_size;
