@@ -43,39 +43,53 @@ int findstr(const char **strtbl, int strtbl_len, const char *s)
 typedef struct {
 	istream_t	*src;
 	int			unch;
-} jscmp_ch_reader_t;
+} jscmp_parser_ctx_t;
 
-void jscmp_init_reader(jscmp_ch_reader_t *reader, istream_t *s)
+void jscmp_init_ctx(jscmp_parser_ctx_t *reader, istream_t *s)
 {
 	reader->src = s;
 	reader->unch = -1;
 }
 
-int jscmp_getch(jscmp_ch_reader_t *reader)
+int jscmp_getch(jscmp_parser_ctx_t *ctx)
 {
 	int result;
-	if (reader->unch >= 0) {
-		result = reader->unch;
+	if (ctx->unch >= 0) {
+		result = ctx->unch;
 	}
 	else {
-		result = istream_read_byte(reader->src);
+		result = istream_read_byte(ctx->src);
 	}
-	reader->unch = -1;
+	ctx->unch = -1;
 
 	return result;
 }
 
-void jscmp_ungetch(jscmp_ch_reader_t *reader, int ch)
+void jscmp_ungetch(jscmp_parser_ctx_t *ctx, int ch)
 {
-	reader->unch = ch;
+	ctx->unch = ch;
+}
+
+int jscmp_hex(int ch)
+{
+	if ('0' <= ch && ch <= '9') {
+		return ch - '0';
+	}
+
+	if ('a' <= ch && ch <= 'f') {
+		return ch - 'a' + 10;
+	}
+
+	if ('A' <= ch && ch <= 'F') {
+		return ch - 'A' + 10;
+	}
+
+	return -1;
 }
 
 int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_size, const char **strtbl, int strtbl_len)
 {
 	int ch;
-	int line = 0;
-	int cr = 0;
-	int esc;
 	char buf[BUF_SIZE + 1];
 	int buf_idx;
 	int buf_ovr;
@@ -84,17 +98,17 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 	uint16_t length_write_val[JSCMP_NEST_LEVEL];
 	int container_node_stack[JSCMP_NEST_LEVEL];
 	int container_node_stack_cnt = 0;
-	jscmp_ch_reader_t reader;
+	jscmp_parser_ctx_t ctx;
 
 	doc->dst_buf = dst_buf;
 	doc->dst_buf_size = dst_buf_size;
 	doc->strtbl = strtbl;
 	doc->strtbl_len = strtbl_len;
 
-	jscmp_init_reader(&reader, src);
+	jscmp_init_ctx(&ctx, src);
 
 	for (;;) {
-		ch = jscmp_getch(&reader);
+		ch = jscmp_getch(&ctx);
 		if (ch < 0) {
 			break;
 		}
@@ -104,25 +118,30 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 		}
 
 		if (ch == '\r') {
-		}
-		else if (ch == '\n') {
-			line++;
+		} else if (ch == '\n') {
+
 		} else if (ch == ',') {
 
 		} else if (ch == ':') {
 
-		}
-		else if (ch == 't') { /* true */
+		} else if (ch == 't') { /* true */
+			
 			int ch1, ch2, ch3;
-			ch1 = jscmp_getch(&reader);
-			ch2 = jscmp_getch(&reader);
-			ch3 = jscmp_getch(&reader);
+
+			ch1 = jscmp_getch(&ctx);
+			ch2 = jscmp_getch(&ctx);
+			ch3 = jscmp_getch(&ctx);
 
 			if (ch1 < 0 || ch2 < 0 || ch3 < 0) {
 				return JSCMP_E_READ;
 			}
 
 			if (ch1 == 'r' && ch2 == 'u' && ch3 == 'e'){
+
+				if (dst_buf_pos + 1 > dst_buf_size) {
+					return JSCMP_E_NOMEM;
+				}
+
 				dst_buf[dst_buf_pos++] = JSCMP_TRUE;
 
 				if (container_node_stack_cnt > 0) {
@@ -135,17 +154,24 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 
 		}
 		else if (ch == 'f') { /* false */
+
 			int ch1, ch2, ch3, ch4;
-			ch1 = jscmp_getch(&reader);
-			ch2 = jscmp_getch(&reader);
-			ch3 = jscmp_getch(&reader);
-			ch4 = jscmp_getch(&reader);
+			
+			ch1 = jscmp_getch(&ctx);
+			ch2 = jscmp_getch(&ctx);
+			ch3 = jscmp_getch(&ctx);
+			ch4 = jscmp_getch(&ctx);
 
 			if (ch1 < 0 || ch2 < 0 || ch3 < 0 || ch4 < 0) {
 				return JSCMP_E_READ;
 			}
 
 			if (ch1 == 'a' && ch2 == 'l' && ch3 == 's' && ch4 == 'e'){
+
+				if (dst_buf_pos + 1 > dst_buf_size) {
+					return JSCMP_E_NOMEM;
+				}
+
 				dst_buf[dst_buf_pos++] = JSCMP_FALSE;
 
 				if (container_node_stack_cnt > 0) {
@@ -158,16 +184,23 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 
 		}
 		else if (ch == 'n') {	/* null */
+
 			int ch1, ch2, ch3;
-			ch1 = jscmp_getch(&reader);
-			ch2 = jscmp_getch(&reader);
-			ch3 = jscmp_getch(&reader);
+			
+			ch1 = jscmp_getch(&ctx);
+			ch2 = jscmp_getch(&ctx);
+			ch3 = jscmp_getch(&ctx);
 
 			if (ch1 < 0 || ch2 < 0 || ch3 < 0) {
 				return JSCMP_E_READ;
 			}
 
 			if (ch1 == 'u' && ch2 == 'l' && ch3 == 'l'){
+
+				if (dst_buf_pos + 1 > dst_buf_size) {
+					return JSCMP_E_NOMEM;
+				}
+
 				dst_buf[dst_buf_pos++] = JSCMP_NULL;
 
 				if (container_node_stack_cnt > 0) {
@@ -190,7 +223,7 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 			}
 
 			for (;;) {
-				ch = jscmp_getch(&reader);
+				ch = jscmp_getch(&ctx);
 				if (ch < 0) {
 					return JSCMP_E_READ;
 				}
@@ -198,7 +231,7 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 					ival = ival * 10 + (ch - '0');
 				}
 				else {
-					jscmp_ungetch(&reader, ch);
+					jscmp_ungetch(&ctx, ch);
 					break;
 				}
 			}
@@ -206,20 +239,45 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 			if (sign) ival = -ival;
 
 			if (ival >= 0 && ival <= 0x7F) {
+
+				if (dst_buf_pos + 1 > dst_buf_size) {
+					return JSCMP_E_NOMEM;
+				}
+
 				dst_buf[dst_buf_pos++] = ival;
 			}
 			else if (ival >= -32 && ival <= -1) {
+
+				if (dst_buf_pos + 1 > dst_buf_size) {
+					return JSCMP_E_NOMEM;
+				}
+
 				dst_buf[dst_buf_pos++] = ival;
 			}
 			else {
 				if (-128 <= ival && ival <= 127) {
+
+					if (dst_buf_pos + 2 > dst_buf_size) {
+						return JSCMP_E_NOMEM;
+					}
+
 					dst_buf[dst_buf_pos++] = JSCMP_INT8;
 					dst_buf[dst_buf_pos++] = ival;
 				} else if (-32768 <= ival && ival <= 32767) {
+
+					if (dst_buf_pos + 3 > dst_buf_size) {
+						return JSCMP_E_NOMEM;
+					}
+
 					dst_buf[dst_buf_pos++] = JSCMP_INT16;
 					dst_buf[dst_buf_pos++] = ival;
 					dst_buf[dst_buf_pos++] = ival >> 8;
 				} else {
+
+					if (dst_buf_pos + 5 > dst_buf_size) {
+						return JSCMP_E_NOMEM;
+					}
+
 					dst_buf[dst_buf_pos++] = JSCMP_INT32;
 					dst_buf[dst_buf_pos++] = ival;
 					dst_buf[dst_buf_pos++] = ival >> 8;
@@ -234,17 +292,16 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 		}
 		else if (ch == '"') {
 			/* str */
-			esc = 0;
 			buf_idx = 0;
 			buf_ovr = 0;
 
 			for (;;) {
 
-				ch = jscmp_getch(&reader);
+				ch = jscmp_getch(&ctx);
 				if (ch < 0) {
 					return JSCMP_E_READ;
 				}
-
+				
 				if (ch == '"') {
 					/* end of str */
 					if (!buf_ovr) {
@@ -253,20 +310,40 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 						idx = findstr(strtbl, strtbl_len, buf);
 						if (idx >= 0) {
 							if (idx >= 256) {
+
+								if (dst_buf_pos + 3 > dst_buf_size) {
+									return JSCMP_E_NOMEM;
+								}
+
 								dst_buf[dst_buf_pos++] = JSCMP_PRE_STR16;
 								dst_buf[dst_buf_pos++] = (uint8_t)idx;
 								dst_buf[dst_buf_pos++] = (uint8_t)(idx >> 8);
 							}
 							else {
+
+								if (dst_buf_pos + 3 > dst_buf_size) {
+									return JSCMP_E_NOMEM;
+								}
+
 								dst_buf[dst_buf_pos++] = JSCMP_PRE_STR8;
 								dst_buf[dst_buf_pos++] = (uint8_t)idx;
 							}
 						}
 						else{
 							if (buf_idx <= 15) {
+
+								if (dst_buf_pos + 1 + buf_idx + 1 > dst_buf_size) {
+									return JSCMP_E_NOMEM;
+								}
+
 								dst_buf[dst_buf_pos++] = JSCMP_FIXSTR_S + buf_idx;
 							}
 							else {
+
+								if (dst_buf_pos + 2 + buf_idx + 1 > dst_buf_size) {
+									return JSCMP_E_NOMEM;
+								}
+
 								dst_buf[dst_buf_pos++] = JSCMP_STR8;
 								dst_buf[dst_buf_pos++] = buf_idx;
 							}
@@ -278,6 +355,11 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 					else {
 						dst_buf[str_len_write_pos] = buf_idx;
 						dst_buf[str_len_write_pos + 1] = buf_idx >> 8;
+
+						if (dst_buf_pos + 1 > dst_buf_size) {
+							return JSCMP_E_NOMEM;
+						}
+
 						dst_buf[dst_buf_pos++] = '\0';
 					}
 
@@ -286,30 +368,124 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 					}
 
 					break;
-				}
-				else{
-					if (buf_ovr) {
-						buf_idx++;
-						dst_buf[dst_buf_pos++] = ch;
-					}
-					else if (buf_idx >= BUF_SIZE) {
-						buf_ovr = 1;
+				} else {
+					int cnt;
+					int i;
+					char s[3];
 
-						dst_buf[dst_buf_pos++] = JSCMP_STR16;
-						str_len_write_pos = dst_buf_pos;
-						dst_buf_pos += 2;
-						memcpy(&dst_buf[dst_buf_pos], buf, buf_idx);
-						dst_buf_pos += buf_idx;
-						dst_buf[dst_buf_pos++] = ch;
+					if (ch == '\\') {
+						ch = jscmp_getch(&ctx);
+						if (ch < 0) {
+							return JSCMP_E_READ;
+						}
+
+						if (ch = 'u') {
+							int ch1, ch2, ch3, ch4;
+							int d1, d2, d3, d4;
+							int ucs;
+
+							ch1 = jscmp_getch(&ctx);
+							ch2 = jscmp_getch(&ctx);
+							ch3 = jscmp_getch(&ctx);
+							ch4 = jscmp_getch(&ctx);
+
+							if (ch1 < 0 || ch2 < 0 || ch3 < 0 || ch4 < 0) {
+								return JSCMP_E_READ;
+							}
+
+							d1 = jscmp_hex(ch1);
+							d2 = jscmp_hex(ch2);
+							d3 = jscmp_hex(ch3);
+							d4 = jscmp_hex(ch4);
+
+							if (d1 < 0 || d2 < 0 || d3 < 0 || d4 < 0) {
+								return JSCMP_E_SYNTAX;
+							}
+
+							ucs = (d3 << 24) | (d4 << 16) | (d1 << 8) | d2;
+							
+							if (ucs <= 0x7F) {
+								s[0] = (char)ucs;
+								cnt = 1;
+							}
+							else if (ucs <= 0x07FF) {
+								s[0] = (char)((ucs & 0x3F) | 0x80);
+								s[1] = (char)((ucs >> 6) | 0xC0);
+								cnt = 2;
+							}
+							else {
+								s[0] = (char)((ucs & 0x3F) | 0x80);
+								s[1] = (char)(((ucs >> 6) & 0x3F) | 0x80);
+								s[2] = (char)(((ucs >> 12) & 0x0F) | 0xE0);
+								cnt = 3;
+							}
+						}
+						else {
+							if (ch = 'b') {
+								ch = '\b';
+							}
+							else if (ch = 'f') {
+								ch = '\f';
+							}
+							else if (ch = 'n') {
+								ch = '\n';
+							}
+							else if (ch = 'r') {
+								ch = '\r';
+							}
+							else if (ch = 't') {
+								ch = '\t';
+							}
+
+							s[0] = ch;
+							cnt = 1;
+						}
 					}
 					else {
-						buf[buf_idx++] = ch;
+						s[0] = ch;
+						cnt = 1;
+					}
+					
+					for (i = 0; i < cnt; i++) {
+						ch = s[i];
+						if (buf_ovr) {
+							if (buf_idx > 0xFFFF) {
+								return JSCMP_E_TOO_LONG_TEXT;
+							}
+
+							if (dst_buf_pos + 1 > dst_buf_size) {
+								return JSCMP_E_NOMEM;
+							}
+
+							buf_idx++;
+							dst_buf[dst_buf_pos++] = ch;
+						}
+						else if (buf_idx >= BUF_SIZE) {
+							buf_ovr = 1;
+
+							if (dst_buf_pos + 4 + buf_idx > dst_buf_size) {
+								return JSCMP_E_NOMEM;
+							}
+
+							dst_buf[dst_buf_pos++] = JSCMP_STR16;
+							str_len_write_pos = dst_buf_pos;
+							dst_buf_pos += 2;
+							memcpy(&dst_buf[3], buf, buf_idx);
+							dst_buf_pos += buf_idx;
+							dst_buf[dst_buf_pos++] = ch;
+						}
+						else {
+							buf[buf_idx++] = ch;
+						}
 					}
 				}
 			}
 
 		} else if (ch == '[') {
 			/* array */
+			if (dst_buf_pos + 5 > dst_buf_size) {
+				return JSCMP_E_NOMEM;
+			}
 
 			if (container_node_stack_cnt > 0) {
 				length_write_val[container_node_stack_cnt - 1]++;
@@ -327,6 +503,9 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 		}
 		else if (ch == '{') {
 			/* object */
+			if (dst_buf_pos + 5 > dst_buf_size) {
+				return JSCMP_E_NOMEM;
+			}
 
 			if (container_node_stack_cnt > 0) {
 				length_write_val[container_node_stack_cnt - 1]++;
@@ -352,6 +531,13 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 			container_node_pos = container_node_stack[container_node_stack_cnt];
 			container_len = length_write_val[container_node_stack_cnt];
 			container_size = dst_buf_pos - container_node_pos;
+
+			if (container_len > 0xFFFF) {
+				return JSCMP_E_TOO_LONG_TEXT;
+			}
+			if (container_size > 0xFFFF) {
+				return JSCMP_E_TOO_LONG_TEXT;
+			}
 				
 			dst_buf[container_node_pos + 1] = container_len;
 			dst_buf[container_node_pos + 2] = container_len >> 8;
