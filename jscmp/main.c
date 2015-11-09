@@ -5,9 +5,9 @@
 char g_out_buf[16 * 1024];
 
 const char *g_strtbl[] = {
-	"Pow",
-	"Mode",
-	"Cool"
+	"servlet-name",
+	"servlet-class",
+	"init-param"
 };
 
 int main(int argc, char **argv)

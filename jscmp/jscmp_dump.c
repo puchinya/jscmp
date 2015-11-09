@@ -13,6 +13,7 @@ static void jscmp_dump_node(jscmp_doc_t *doc, jscmp_node_t node, int first_space
 {
 	int i;
 	jscmp_node_t cn;
+	jscmp_node_t end;
 
 	if (first_spaces) jscmp_dump_spaces(nest);
 
@@ -31,7 +32,8 @@ static void jscmp_dump_node(jscmp_doc_t *doc, jscmp_node_t node, int first_space
 		break;
 	case JSCMP_TYPE_ARRAY:
 		printf("[\n");
-		for (i = 0, cn = jscmp_array_begin(node); cn != jscmp_array_end(node); cn = jscmp_array_next(cn))
+		end = jscmp_array_end(node);
+		for (i = 0, cn = jscmp_array_begin(node); cn < end; cn = jscmp_array_next(cn))
 		{
 			if (i > 0) printf(",\n");
 			jscmp_dump_node(doc, cn, 1, nest + 1);
@@ -43,7 +45,8 @@ static void jscmp_dump_node(jscmp_doc_t *doc, jscmp_node_t node, int first_space
 		break;
 	case JSCMP_TYPE_OBJECT:
 		printf("{\n");
-		for (i = 0, cn = jscmp_object_begin(node); cn != jscmp_object_end(node); cn = jscmp_object_next(cn))
+		end = jscmp_object_end(node);
+		for (i = 0, cn = jscmp_object_begin(node); cn < end; cn = jscmp_object_next(cn))
 		{
 			if (i > 0) printf(",\n");
 
