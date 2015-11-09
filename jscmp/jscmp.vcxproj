@@ -67,12 +67,14 @@
     <ClCompile Include="fstream.c" />
     <ClCompile Include="iostream.c" />
     <ClCompile Include="jscmp.c" />
+    <ClCompile Include="jscmp_dump.c" />
     <ClCompile Include="main.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="fstream.h" />
     <ClInclude Include="iostream.h" />
     <ClInclude Include="jscmp.h" />
+    <ClInclude Include="jscmp_dump.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="test.json">

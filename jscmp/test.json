@@ -1,4 +1,7 @@
 
 {
-  "Pow":20
+  "Pow":20,
+  "Mode":"Cool",
+  "InTemp":-32,
+  "OutTemp":-1
 }

@@ -3,11 +3,13 @@
 #include <stdint.h>
 #include <string.h>
 
-#define JSCMP_FIXOBJ_S		0x80
-#define JSCMP_FIXARRAY_S	0x90
-#define JSCMP_FIXSTR_S		0xA0
+#define JSCMP_POS_FIXINT_E		0x7F
+//#define JSCMP_FIXOBJ_S		0x80
+//#define JSCMP_FIXARRAY_S	0x90
+//#define JSCMP_FIXSTR_S		0xA0
+#define JSCMP_FIXSTR_E
 #define JSCMP_NULL			0xC0
-#define JSCMP_PRE_STR		0xC1
+#define JSCMP_PRE_STR8		0xC1
 #define JSCMP_FALSE			0xC2
 #define JSCMP_TRUE			0xC3
 #define JSCMP_UINT8			0xCC
@@ -18,11 +20,13 @@
 #define JSCMP_INT32			0xD2
 #define JSCMP_STR8			0xD9
 #define JSCMP_STR16			0xDA
-#define JSCMP_STR32			0xDB
+//#define JSCMP_STR32			0xDB
 #define JSCMP_ARRAY16		0xDC
-#define JSCMP_ARRAY32		0xDD
+//#define JSCMP_ARRAY32		0xDD
 #define JSCMP_MAP16			0xDE
-#define JSCMP_MAP32			0xDF
+//#define JSCMP_MAP32			0xDF
+#define JSCMP_PRE_STR16		0xDF
+#define JSCMP_NEG_FIXINT_S	0xE0
 
 #define BUF_SIZE	64
 
@@ -82,6 +86,11 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 	int parse_type_stack_pos = 0;
 	jscmp_ch_reader_t reader;
 
+	doc->dst_buf = dst_buf;
+	doc->dst_buf_size = dst_buf_size;
+	doc->strtbl = strtbl;
+	doc->strtbl_len = strtbl_len;
+
 	jscmp_init_reader(&reader, src);
 
 	for (;;) {
@@ -133,6 +142,9 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 			if (ival >= 0 && ival <= 0x7F) {
 				dst_buf[dst_buf_pos++] = ival;
 			}
+			else if (ival >= -32 && ival <= -1) {
+				dst_buf[dst_buf_pos++] = ival;
+			}
 			else {
 				if (-128 <= ival && ival <= 127) {
 					dst_buf[dst_buf_pos++] = JSCMP_INT8;
@@ -175,19 +187,28 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 						buf[buf_idx] = '\0';
 						idx = findstr(strtbl, strtbl_len, buf);
 						if (idx >= 0) {
-							dst_buf[dst_buf_pos++] = JSCMP_PRE_STR;
-							dst_buf[dst_buf_pos++] = (uint8_t)idx;
+							if (idx >= 256) {
+								dst_buf[dst_buf_pos++] = JSCMP_PRE_STR16;
+								dst_buf[dst_buf_pos++] = (uint8_t)idx;
+								dst_buf[dst_buf_pos++] = (uint8_t)(idx >> 8);
+							}
+							else {
+								dst_buf[dst_buf_pos++] = JSCMP_PRE_STR8;
+								dst_buf[dst_buf_pos++] = (uint8_t)idx;
+							}
 						}
 						else{
 							dst_buf[dst_buf_pos++] = JSCMP_STR8;
 							dst_buf[dst_buf_pos++] = buf_idx;
 							memcpy(&dst_buf[dst_buf_pos], buf, buf_idx);
 							dst_buf_pos += buf_idx;
+							dst_buf[dst_buf_pos++] = '\0';
 						}
 					}
 					else {
 						dst_buf[str_len_write_pos] = buf_idx;
 						dst_buf[str_len_write_pos + 1] = buf_idx >> 8;
+						dst_buf[dst_buf_pos++] = '\0';
 					}
 
 					if (parse_type_stack_pos > 0) {
@@ -263,38 +284,45 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 		}
 	}
 
+	doc->dst_buf_pos = dst_buf_pos;
+
 	return 0;
 }
 
-int jscmp_node_size(jscmp_node_t *n)
+jscmp_node_t jscmp_root(jscmp_doc_t *doc)
 {
-	int type = *(uint8_t *)n;
+	return doc->dst_buf;
+}
 
-	if (type == JSCMP_PRE_STR) {
+int jscmp_node_size(jscmp_node_t n)
+{
+	int type = n[0];
+	
+	if (type == JSCMP_PRE_STR8) {
 		return 2;
 	}
 	else if (type == JSCMP_UINT8 || type == JSCMP_INT8) {
 		return 2;
 	}
-	else if (type == JSCMP_UINT16 || type == JSCMP_INT16) {
+	else if (type == JSCMP_PRE_STR16 || type == JSCMP_UINT16 || type == JSCMP_INT16) {
 		return 3;
 	}
 	else if (type == JSCMP_UINT32 || type == JSCMP_INT32) {
 		return 5;
 	}
 	else if (type == JSCMP_STR8) {
-		int len = *((uint8_t *)n + 1);
-		return 2 + len;
+		int len = n[1];
+		return 2 + len + 1;
 	}
 	else if (type == JSCMP_STR16) {
-		int len_l = *((uint8_t *)n + 1);
-		int len_h = *((uint8_t *)n + 2);
+		int len_l = n[1];
+		int len_h = n[2];
 		int len = len_l | (len_h << 8);
-		return 2 + len;
+		return 2 + len + 1;
 	}
 	else if (type == JSCMP_ARRAY16 || type == JSCMP_MAP16) {
-		int size_l = *((uint8_t *)n + 3);
-		int size_h = *((uint8_t *)n + 4);
+		int size_l = n[3];
+		int size_h = n[4];
 		int size = size_l | (size_h << 8);
 		return 5 + size;
 	}
@@ -302,12 +330,14 @@ int jscmp_node_size(jscmp_node_t *n)
 	return 1;
 }
 
-int jscmp_type(jscmp_node_t *n) {
-	int v = *(uint8_t *)n;
-	if (v <= 0x7F || v == JSCMP_INT8 || v == JSCMP_INT16 || v == JSCMP_INT32) {
+int jscmp_type(jscmp_node_t n) {
+	
+	int v = n[0];
+	
+	if (v <= JSCMP_POS_FIXINT_E || v >= JSCMP_NEG_FIXINT_S || v == JSCMP_INT8 || v == JSCMP_INT16 || v == JSCMP_INT32) {
 		return JSCMP_TYPE_INT;
 	}
-	if (v == JSCMP_PRE_STR || v == JSCMP_STR8 || v == JSCMP_STR16) {
+	if (v == JSCMP_PRE_STR8 || v == JSCMP_PRE_STR16 || v == JSCMP_STR8 || v == JSCMP_STR16) {
 		return JSCMP_TYPE_STR;
 	}
 	if (v == JSCMP_ARRAY16) {
@@ -320,90 +350,145 @@ int jscmp_type(jscmp_node_t *n) {
 	return JSCMP_TYPE_NULL;
 }
 
-int32_t jscmp_int_val(jscmp_node_t *n)
+int32_t jscmp_int_val(jscmp_node_t n)
 {
-	int v = n[0];
-	if (v <= 0x7F) {
-		return v;
+	int type = n[0];
+	
+	if (type <= JSCMP_POS_FIXINT_E) {
+		return type;
 	}
-	if (v == JSCMP_INT8) {
+	if (type >= JSCMP_NEG_FIXINT_S) {
+		return (int8_t)type;
+	}
+	if (type == JSCMP_INT8) {
 		return n[1];
 	}
-	else if (v == JSCMP_INT16) {
+	else if (type == JSCMP_INT16) {
 		return n[1] || ((int32_t)n[2] << 8);
 	}
-	else if (v == JSCMP_INT32) {
+	else if (type == JSCMP_INT32) {
 		return n[1] || ((int32_t)n[2] << 8) || ((int32_t)n[3] << 16) || ((int32_t)n[4] << 24);
+	}
+	else{
+		return 0;
 	}
 }
 
-char *jscmp_str_val(jscmp_doc_t *doc, jscmp_node_t *n)
+const char *jscmp_str_val(jscmp_doc_t *doc, jscmp_node_t n)
 {
-
+	int type = n[0];
+	if (type == JSCMP_PRE_STR8) {
+		return doc->strtbl[n[1]];
+	}
+	else if (type == JSCMP_PRE_STR16) {
+		int idx = (int)n[1] | ((int)n[2] << 8);
+		return doc->strtbl[idx];
+	}
+	else if (type == JSCMP_STR8) {
+		return &n[2];
+	}
+	else if (type == JSCMP_STR16) {
+		return &n[3];
+	}
+	else{
+		return 0;
+	}
 }
 
-int jscmp_str_len(jscmp_doc_t *doc, jscmp_node_t *n)
+int jscmp_str_len(jscmp_doc_t *doc, jscmp_node_t n)
 {
-
+	int type = n[0];
+	if (type == JSCMP_PRE_STR8) {
+		return strlen(doc->strtbl[n[1]]);
+	}
+	else if (type == JSCMP_PRE_STR16) {
+		int idx = (int)n[1] | ((int)n[2] << 8);
+		return strlen(doc->strtbl[idx]);
+	}
+	else if (type == JSCMP_STR8) {
+		return n[1];
+	}
+	else if (type == JSCMP_STR16) {
+		return (int)n[0] | ((int)n[1] << 8);
+	}
+	else{
+		return -1;
+	}
 }
 
-int jscmp_bool_val(jscmp_node_t *n)
+int jscmp_bool_val(jscmp_node_t n)
 {
-	int v = n[0];
-	if (v == JSCMP_TRUE) {
+	int type = n[0];
+	if (type == JSCMP_TRUE) {
 		return 1;
 	} else {
 		return 0;
 	}
 }
 
-jscmp_node_t *jscmp_next(jscmp_node_t *n)
+jscmp_node_t jscmp_next(jscmp_node_t n)
 {
-	return (jscmp_node_t *)((uint8_t *)n + jscmp_node_size(n));
+	return &n[jscmp_node_size(n)];
 }
 
-int jscmp_array_len(jscmp_node_t *array_node)
+int jscmp_array_len(jscmp_node_t array_node)
 {
-	int len_l = *((uint8_t *)array_node + 1);
-	int len_h = *((uint8_t *)array_node + 2);
+	int len_l = array_node[1];
+	int len_h = array_node[2];
 	int len = len_l | (len_h << 8);
 
 	return len;
 }
 
-jscmp_node_t *jscmp_array_begin(jscmp_node_t *array_node)
+jscmp_node_t jscmp_array_begin(jscmp_node_t array_node)
 {
-	return (jscmp_node_t *)((uint8_t *)array_node + 3);
+	return &array_node[5];
 }
 
-jscmp_node_t *jscmp_array_end(jscmp_node_t *array_node)
+jscmp_node_t jscmp_array_end(jscmp_node_t array_node)
 {
-	int size_l = *((uint8_t *)array_node + 3);
-	int size_h = *((uint8_t *)array_node + 4);
+	int size_l = array_node[3];
+	int size_h = array_node[4];
 	int size = size_l | (size_h << 8);
 
-	return (jscmp_node_t *)((uint8_t *)array_node + size);
+	return &array_node[size];
 }
 
-int jscmp_object_len(jscmp_node_t *object_node)
+jscmp_node_t jscmp_array_next(jscmp_node_t n)
 {
-	int len_l = *((uint8_t *)object_node + 1);
-	int len_h = *((uint8_t *)object_node + 2);
+	return jscmp_next(n);
+}
+
+int jscmp_object_len(jscmp_node_t object_node)
+{
+	int len_l = object_node[1];
+	int len_h = object_node[2];
 	int len = len_l | (len_h << 8);
 
 	return len;
 }
 
-jscmp_node_t *jscmp_object_begin(jscmp_node_t *object_node)
+jscmp_node_t jscmp_object_begin(jscmp_node_t object_node)
 {
-	return (jscmp_node_t *)((uint8_t *)object_node + 3);
+	return &object_node[5];
 }
 
-jscmp_node_t *jscmp_object_end(jscmp_node_t *object_node)
+jscmp_node_t jscmp_object_end(jscmp_node_t object_node)
 {
-	int size_l = *((uint8_t *)object_node + 3);
-	int size_h = *((uint8_t *)object_node + 4);
+	int size_l = object_node[3];
+	int size_h = object_node[4];
 	int size = size_l | (size_h << 8);
 
-	return (jscmp_node_t *)((uint8_t *)object_node + size);
+	return &object_node[size];
 }
+
+jscmp_node_t jscmp_object_val(jscmp_node_t n)
+{
+	return jscmp_next(n);
+}
+
+jscmp_node_t jscmp_object_next(jscmp_node_t n)
+{
+	return jscmp_next(jscmp_next(n));
+}
+

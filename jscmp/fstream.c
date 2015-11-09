@@ -46,3 +46,15 @@ int ifstream_read_byte(ifstream_t *self)
 	if (r <= 0) return -1;
 	return ch[0];
 }
+
+int ifstream_length(ifstream_t *self)
+{
+	int result, bk;
+
+	bk = ftell(self->fp);
+	fseek(self->fp, 0, SEEK_END);
+	result = ftell(self->fp);
+	fseek(self->fp, bk, SEEK_SET);
+
+	return result;
+}
