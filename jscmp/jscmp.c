@@ -6,8 +6,8 @@
 #define JSCMP_POS_FIXINT_E		0x7F
 //#define JSCMP_FIXOBJ_S		0x80
 //#define JSCMP_FIXARRAY_S	0x90
-//#define JSCMP_FIXSTR_S		0xA0
-#define JSCMP_FIXSTR_E
+#define JSCMP_FIXSTR_S		0xA0
+#define JSCMP_FIXSTR_E		0xBF
 #define JSCMP_NULL			0xC0
 #define JSCMP_PRE_STR8		0xC1
 #define JSCMP_FALSE			0xC2
@@ -81,9 +81,9 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 	int buf_ovr;
 	int dst_buf_pos = 0;
 	int str_len_write_pos;
-	uint16_t length_write_val[16];
-	int dst_pos_stack[16];
-	int parse_type_stack_pos = 0;
+	uint16_t length_write_val[JSCMP_NEST_LEVEL];
+	int container_node_stack[JSCMP_NEST_LEVEL];
+	int container_node_stack_cnt = 0;
 	jscmp_ch_reader_t reader;
 
 	doc->dst_buf = dst_buf;
@@ -112,57 +112,70 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 		} else if (ch == ':') {
 
 		}
-		else if (ch == 't') {
+		else if (ch == 't') { /* true */
 			int ch1, ch2, ch3;
 			ch1 = jscmp_getch(&reader);
 			ch2 = jscmp_getch(&reader);
 			ch3 = jscmp_getch(&reader);
 
-			if (ch1 == 'r' || ch2 == 'u' || ch3 == 'e'){
+			if (ch1 < 0 || ch2 < 0 || ch3 < 0) {
+				return JSCMP_E_READ;
+			}
+
+			if (ch1 == 'r' && ch2 == 'u' && ch3 == 'e'){
 				dst_buf[dst_buf_pos++] = JSCMP_TRUE;
 
-				if (parse_type_stack_pos > 0) {
-					length_write_val[parse_type_stack_pos - 1]++;
+				if (container_node_stack_cnt > 0) {
+					length_write_val[container_node_stack_cnt - 1]++;
 				}
 			}
 			else {
-				return -1;
+				return JSCMP_E_SYNTAX;
 			}
 
 		}
-		else if (ch == 'f') {
+		else if (ch == 'f') { /* false */
 			int ch1, ch2, ch3, ch4;
 			ch1 = jscmp_getch(&reader);
 			ch2 = jscmp_getch(&reader);
 			ch3 = jscmp_getch(&reader);
 			ch4 = jscmp_getch(&reader);
 
-			if (ch1 == 'a' || ch2 == 'l' || ch3 == 's' || ch4 == 'e'){
+			if (ch1 < 0 || ch2 < 0 || ch3 < 0 || ch4 < 0) {
+				return JSCMP_E_READ;
+			}
+
+			if (ch1 == 'a' && ch2 == 'l' && ch3 == 's' && ch4 == 'e'){
 				dst_buf[dst_buf_pos++] = JSCMP_FALSE;
 
-				if (parse_type_stack_pos > 0) {
-					length_write_val[parse_type_stack_pos - 1]++;
+				if (container_node_stack_cnt > 0) {
+					length_write_val[container_node_stack_cnt - 1]++;
 				}
 			}
 			else {
-				return -1;
+				return JSCMP_E_SYNTAX;
 			}
 
-		} else if (ch == 'n') {
+		}
+		else if (ch == 'n') {	/* null */
 			int ch1, ch2, ch3;
 			ch1 = jscmp_getch(&reader);
 			ch2 = jscmp_getch(&reader);
 			ch3 = jscmp_getch(&reader);
 
-			if (ch1 == 'u' || ch2 == 'l' || ch3 == 'l'){
+			if (ch1 < 0 || ch2 < 0 || ch3 < 0) {
+				return JSCMP_E_READ;
+			}
+
+			if (ch1 == 'u' && ch2 == 'l' && ch3 == 'l'){
 				dst_buf[dst_buf_pos++] = JSCMP_NULL;
 
-				if (parse_type_stack_pos > 0) {
-					length_write_val[parse_type_stack_pos - 1]++;
+				if (container_node_stack_cnt > 0) {
+					length_write_val[container_node_stack_cnt - 1]++;
 				}
 			}
 			else {
-				return -1;
+				return JSCMP_E_SYNTAX;
 			}
 
 		} else if (ch == '-' || (ch >= '0' && ch <= '9')) {
@@ -179,8 +192,7 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 			for (;;) {
 				ch = jscmp_getch(&reader);
 				if (ch < 0) {
-					/* read error */
-					break;
+					return JSCMP_E_READ;
 				}
 				if (ch >= '0' && ch <= '9') {
 					ival = ival * 10 + (ch - '0');
@@ -216,8 +228,8 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 				}
 			}
 
-			if (parse_type_stack_pos > 0) {
-				length_write_val[parse_type_stack_pos - 1]++;
+			if (container_node_stack_cnt > 0) {
+				length_write_val[container_node_stack_cnt - 1]++;
 			}
 		}
 		else if (ch == '"') {
@@ -230,8 +242,7 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 
 				ch = jscmp_getch(&reader);
 				if (ch < 0) {
-					/* read error */
-					break;
+					return JSCMP_E_READ;
 				}
 
 				if (ch == '"') {
@@ -252,8 +263,13 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 							}
 						}
 						else{
-							dst_buf[dst_buf_pos++] = JSCMP_STR8;
-							dst_buf[dst_buf_pos++] = buf_idx;
+							if (buf_idx <= 15) {
+								dst_buf[dst_buf_pos++] = JSCMP_FIXSTR_S + buf_idx;
+							}
+							else {
+								dst_buf[dst_buf_pos++] = JSCMP_STR8;
+								dst_buf[dst_buf_pos++] = buf_idx;
+							}
 							memcpy(&dst_buf[dst_buf_pos], buf, buf_idx);
 							dst_buf_pos += buf_idx;
 							dst_buf[dst_buf_pos++] = '\0';
@@ -265,8 +281,8 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 						dst_buf[dst_buf_pos++] = '\0';
 					}
 
-					if (parse_type_stack_pos > 0) {
-						length_write_val[parse_type_stack_pos - 1]++;
+					if (container_node_stack_cnt > 0) {
+						length_write_val[container_node_stack_cnt - 1]++;
 					}
 
 					break;
@@ -295,46 +311,62 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 		} else if (ch == '[') {
 			/* array */
 
-			if (parse_type_stack_pos > 0) {
-				length_write_val[parse_type_stack_pos - 1]++;
+			if (container_node_stack_cnt > 0) {
+				length_write_val[container_node_stack_cnt - 1]++;
 			}
 
-			dst_pos_stack[parse_type_stack_pos] = dst_buf_pos;
+			container_node_stack[container_node_stack_cnt] = dst_buf_pos;
 			dst_buf[dst_buf_pos] = JSCMP_ARRAY16;
 			dst_buf_pos += 5;
-			length_write_val[parse_type_stack_pos] = 0;
+			length_write_val[container_node_stack_cnt] = 0;
 
-			parse_type_stack_pos++;
+			container_node_stack_cnt++;
+			if (container_node_stack_cnt > JSCMP_NEST_LEVEL) {
+				return JSCMP_E_NEST_LEVEL_OVER;
+			}
 		}
 		else if (ch == '{') {
 			/* object */
 
-			if (parse_type_stack_pos > 0) {
-				length_write_val[parse_type_stack_pos - 1]++;
+			if (container_node_stack_cnt > 0) {
+				length_write_val[container_node_stack_cnt - 1]++;
 			}
 
-			dst_pos_stack[parse_type_stack_pos] = dst_buf_pos;
+			container_node_stack[container_node_stack_cnt] = dst_buf_pos;
 			dst_buf[dst_buf_pos] = JSCMP_MAP16;
 			dst_buf_pos += 5;
-			length_write_val[parse_type_stack_pos] = 0;
+			length_write_val[container_node_stack_cnt] = 0;
 
-			parse_type_stack_pos++;
+			container_node_stack_cnt++;
+			if (container_node_stack_cnt > JSCMP_NEST_LEVEL) {
+				return JSCMP_E_NEST_LEVEL_OVER;
+			}
 		}
 		else if (ch == ']' || ch == '}') {
-			int container_dst_pos;
+			int container_node_pos;
 			int container_len;
 			int container_size;
 
-			parse_type_stack_pos--;
+			container_node_stack_cnt--;
 
-			container_dst_pos = dst_pos_stack[parse_type_stack_pos];
-			container_len = length_write_val[parse_type_stack_pos];
-			container_size = dst_buf_pos - container_dst_pos;
+			container_node_pos = container_node_stack[container_node_stack_cnt];
+			container_len = length_write_val[container_node_stack_cnt];
+			container_size = dst_buf_pos - container_node_pos;
 				
-			dst_buf[container_dst_pos + 1] = container_len;
-			dst_buf[container_dst_pos + 2] = container_len >> 8;
-			dst_buf[container_dst_pos + 3] = container_size;
-			dst_buf[container_dst_pos + 4] = container_size >> 8;
+			dst_buf[container_node_pos + 1] = container_len;
+			dst_buf[container_node_pos + 2] = container_len >> 8;
+			dst_buf[container_node_pos + 3] = container_size;
+			dst_buf[container_node_pos + 4] = container_size >> 8;
+		}
+	}
+
+	if (container_node_stack_cnt > 0) {
+		uint8_t type = dst_buf[container_node_stack[container_node_stack_cnt - 1]];
+		if (type == JSCMP_ARRAY16) {
+			return JSCMP_E_SYNTAX_UNMATCH_ARRAY_BRACKET;
+		}
+		else {
+			return JSCMP_E_SYNTAX_UNMATCH_OBJECT_BRACKET;
 		}
 	}
 
@@ -352,7 +384,10 @@ int jscmp_node_size(jscmp_node_t n)
 {
 	int type = n[0];
 	
-	if (type == JSCMP_PRE_STR8) {
+	if (JSCMP_FIXSTR_S <= type && type <= JSCMP_FIXSTR_E) {
+		return 1 + (type - JSCMP_FIXSTR_S) + 1;
+	}
+	else if (type == JSCMP_PRE_STR8) {
 		return 2;
 	}
 	else if (type == JSCMP_UINT8 || type == JSCMP_INT8) {
@@ -391,7 +426,7 @@ int jscmp_type(jscmp_node_t n) {
 	if (v <= JSCMP_POS_FIXINT_E || v >= JSCMP_NEG_FIXINT_S || v == JSCMP_INT8 || v == JSCMP_INT16 || v == JSCMP_INT32) {
 		return JSCMP_TYPE_INT;
 	}
-	if (v == JSCMP_PRE_STR8 || v == JSCMP_PRE_STR16 || v == JSCMP_STR8 || v == JSCMP_STR16) {
+	if ((JSCMP_FIXSTR_S <= v && v <= JSCMP_FIXSTR_E) || v == JSCMP_PRE_STR8 || v == JSCMP_PRE_STR16 || v == JSCMP_STR8 || v == JSCMP_STR16) {
 		return JSCMP_TYPE_STR;
 	}
 	if (v == JSCMP_ARRAY16) {
@@ -434,6 +469,10 @@ int32_t jscmp_int_val(jscmp_node_t n)
 const char *jscmp_str_val(jscmp_doc_t *doc, jscmp_node_t n)
 {
 	int type = n[0];
+
+	if (JSCMP_FIXSTR_S <= type && type <= JSCMP_FIXSTR_E) {
+		return &n[1];
+	}
 	if (type == JSCMP_PRE_STR8) {
 		return doc->strtbl[n[1]];
 	}
@@ -455,7 +494,11 @@ const char *jscmp_str_val(jscmp_doc_t *doc, jscmp_node_t n)
 int jscmp_str_len(jscmp_doc_t *doc, jscmp_node_t n)
 {
 	int type = n[0];
-	if (type == JSCMP_PRE_STR8) {
+
+	if (JSCMP_FIXSTR_S <= type && type <= JSCMP_FIXSTR_E) {
+		return type - JSCMP_FIXSTR_S;
+	}
+	else if (type == JSCMP_PRE_STR8) {
 		return strlen(doc->strtbl[n[1]]);
 	}
 	else if (type == JSCMP_PRE_STR16) {

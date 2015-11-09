@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include "iostream.h"
 
+#define JSCMP_NEST_LEVEL	16	/* array and object nest level */
+
 #define JSCMP_TYPE_NULL		0x00
 #define JSCMP_TYPE_INT		0x01
 #define JSCMP_TYPE_FLOAT	0x02
@@ -13,6 +15,20 @@
 #define JSCMP_TYPE_BOOL		0x04
 #define JSCMP_TYPE_ARRAY	0x05
 #define JSCMP_TYPE_OBJECT	0x06
+
+#define JSCMP_E_NOMEM								-1
+#define JSCMP_E_SYNTAX_UNMATCH_ARRAY_BRACKET		-2
+#define JSCMP_E_SYNTAX_UNMATCH_OBJECT_BRACKET		-3
+#define JSCMP_E_SYNTAX_STRING_LITERAL_NOT_CLOSED	-4
+#define JSCMP_E_SYNTAX_INVALID_INTEGER_FORMAT		-5
+#define JSCMP_E_SYNTAX_ARRAY_COMMA_NOT_FOUND		-6
+#define JSCMP_E_SYNTAX_OBJECT_KEY_NOT_STRING		-7
+#define JSCMP_E_SYNTAX_OBJECT_COLON_NOT_FOUND		-8
+#define JSCMP_E_SYNTAX_OBJECT_COMMA_NOT_FOUND		-9
+#define JSCMP_E_SYNTAX								-10
+#define JSCMP_E_TOO_LONG_TEXT						-11
+#define JSCMP_E_NEST_LEVEL_OVER						-12
+#define JSCMP_E_READ								-13
 
 typedef uint8_t *jscmp_node_t;
 typedef struct {
