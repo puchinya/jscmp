@@ -476,8 +476,9 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 							dst_buf[dst_buf_pos++] = JSCMP_STR16;
 							str_len_write_pos = dst_buf_pos;
 							dst_buf_pos += 2;
-							memcpy(&dst_buf[3], buf, buf_idx);
+							memcpy(&dst_buf[dst_buf_pos], buf, buf_idx);
 							dst_buf_pos += buf_idx;
+							buf_idx++;
 							dst_buf[dst_buf_pos++] = ch;
 						}
 						else {
@@ -596,7 +597,7 @@ int jscmp_node_size(jscmp_node_t n)
 		int len_l = n[1];
 		int len_h = n[2];
 		int len = len_l | (len_h << 8);
-		return 2 + len + 1;
+		return 3 + len + 1;
 	}
 	else if (type == JSCMP_ARRAY16 || type == JSCMP_MAP16) {
 		int size_l = n[3];
