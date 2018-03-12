@@ -1,5 +1,5 @@
 
-#include "iostream.h"
+#include "../include/iostream.h"
 
 int istream_read(void *self, void *data, int size)
 {

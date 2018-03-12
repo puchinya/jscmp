@@ -2,7 +2,7 @@
 #ifndef __FSTREAM_H
 #define __FSTREAM_H
 
-#include "iostream.h"
+#include "../include/iostream.h"
 #include <stdio.h>
 
 typedef struct {

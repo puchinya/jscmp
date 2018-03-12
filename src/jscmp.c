@@ -1,5 +1,5 @@
 
-#include "jscmp.h"
+#include "../include/jscmp.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -385,7 +385,7 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 							return JSCMP_E_READ;
 						}
 
-						if (ch = 'u') {
+						if (ch == 'u') {
 							int ch1, ch2, ch3, ch4;
 							int d1, d2, d3, d4;
 							int ucs;
@@ -427,19 +427,19 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 							}
 						}
 						else {
-							if (ch = 'b') {
+							if (ch == 'b') {
 								ch = '\b';
 							}
-							else if (ch = 'f') {
+							else if (ch == 'f') {
 								ch = '\f';
 							}
-							else if (ch = 'n') {
+							else if (ch == 'n') {
 								ch = '\n';
 							}
-							else if (ch = 'r') {
+							else if (ch == 'r') {
 								ch = '\r';
 							}
-							else if (ch = 't') {
+							else if (ch == 't') {
 								ch = '\t';
 							}
 
@@ -567,7 +567,7 @@ int jscmp_parse(jscmp_doc_t *doc, istream_t *src, char *dst_buf, int dst_buf_siz
 
 jscmp_node_t jscmp_root(jscmp_doc_t *doc)
 {
-	return doc->dst_buf;
+	return (jscmp_node_t)doc->dst_buf;
 }
 
 int jscmp_node_size(jscmp_node_t n)
@@ -661,7 +661,7 @@ const char *jscmp_str_val(jscmp_doc_t *doc, jscmp_node_t n)
 	int type = n[0];
 
 	if (JSCMP_FIXSTR_S <= type && type <= JSCMP_FIXSTR_E) {
-		return &n[1];
+		return (const char *)&n[1];
 	}
 	if (type == JSCMP_PRE_STR8) {
 		return doc->strtbl[n[1]];
@@ -671,10 +671,10 @@ const char *jscmp_str_val(jscmp_doc_t *doc, jscmp_node_t n)
 		return doc->strtbl[idx];
 	}
 	else if (type == JSCMP_STR8) {
-		return &n[2];
+		return (const char *)&n[2];
 	}
 	else if (type == JSCMP_STR16) {
-		return &n[3];
+		return (const char *)&n[3];
 	}
 	else{
 		return 0;
